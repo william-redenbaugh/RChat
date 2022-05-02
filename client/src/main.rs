@@ -1,10 +1,30 @@
-use std::alloc::handle_alloc_error;
+use std::{alloc::handle_alloc_error};
+
+pub struct MessengerConnection{
+    ip: String, 
+    port: String, 
+    
+}
+
+fn new_connection(ip: String, port: String, ){
+
+}
+
+impl MessengerConnection{
+    pub fn get_messages(&mut self){
+
+    }
+
+    pub fn send_message(&mut self, msg: String){
+        
+    }
+}
 
 fn main() {
     let is_writing = handle_input(); 
 
     if is_writing {
-
+        
     }
     else{
 
