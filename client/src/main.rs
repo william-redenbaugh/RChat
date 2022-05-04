@@ -1,25 +1,28 @@
-use std::net::SocketAddr;
-use tarpc::{client, context, tokio_serde::formats::Json};
+use tungstenite::{accept, connect, stream::MaybeTlsStream, Error, Message, WebSocket};
+use std::net::TcpStream;
+
+use url::Url; 
+
 pub struct MessengerConnection{
     ip: String, 
     port: String, 
-    server_addr: SocketAddr,
+    socket: WebSocket<MaybeTlsStream<TcpStream>>
 }
 
 fn new_connection(ip_in: String, port_in: String)->MessengerConnection{
     
-    let mut str = ip_in.clone();
-    str.push(':'); 
+    let mut str = String::from("ws://"); 
+    str.push_str(&ip_in);
+    str.push(':');
     str.push_str(&port_in.as_str()); 
+    str.push_str(&String::from("/socket"));
 
-    let mut serv_addr = str.parse().expect("Could not parse"); 
-
-    let mut transport = tarpc::serde_transport::tcp::connect(serv_addr, Json::default);
+    let (mut m_socket, response) = connect(url::Url::parse(&str).unwrap()).expect("Cannot connect to port... ");
 
     return MessengerConnection { 
         ip: ip_in,
         port: port_in ,
-        server_addr: serv_addr
+        socket: m_socket
     };
 }
 
@@ -30,20 +33,28 @@ impl MessengerConnection{
     }
 
     pub fn send_message(&mut self, msg: String){
+        self.socket.write_message(Message::Text(msg.clone().into())).unwrap();
+        let msg_ack = self.socket.read_message().expect("Error reading message").to_string();
         
+        if !msg.eq(&msg_ack) {
+            println!("Message wasn't sent successfully...");
+        }
+    }
+
+    pub fn close_connection(&mut self){
+        self.socket.close(None);
     }
 }
 
-#[tokio::main]
 fn main() {
 
-    let mut conn = new_connection(String::from("192.168.1.75"), String::from("1212"));
+    let mut conn = new_connection(String::from("localhost"), String::from("1212"));
     let is_writing = handle_input(); 
     
     if is_writing {
         let mut input = String::new(); 
-        let input_type = std::io::stdin().read_line(&mut input).unwrap();
         println!("What is your message?: ");
+        let input_type = std::io::stdin().read_line(&mut input).unwrap();
         conn.send_message(input);
     }
     else{
@@ -51,6 +62,8 @@ fn main() {
         let messages = conn.get_messages();
         println!("Message Output: {}", messages);
     }
+
+    conn.close_connection();
 }
 
 // Returns true if we are writing, false if we are reading
