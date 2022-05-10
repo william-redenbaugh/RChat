@@ -1,3 +1,5 @@
+#![feature(collections)]
+
 use rusqlite::{Connection, Result};
 
 use std::{net::TcpListener, thread::spawn};
