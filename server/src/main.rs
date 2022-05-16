@@ -1,69 +1,34 @@
-use rusqlite::{params, Connection, Result, NO_PARAMS};
+use rusqlite::{params, Connection, Result, MappedRows, NO_PARAMS};
 use std::{net::TcpListener, thread::spawn};
+use std::env; 
 use tungstenite::{
     accept_hdr,
     handshake::server::{Request, Response},
 };
-
-struct Message{
-    uuid: i64, 
-    content: String, 
-    content_type: String,
-    sender_username: String, 
-    unix_timestamp: u32
-}
-
-struct MessageDatabase{
-    conn: Connection
-}
-
-fn init_message_database() -> MessageDatabase{
-    let mut conn_r = Connection::open_in_memory().unwrap();
-
-        conn_r.execute(
-            "CREATE TABLE if not exists message_list (
-                    uuid              INTEGER PRIMARY KEY,
-                    content           TEXT NOT NULL,
-                    content_type      TEXT NOT NULL,
-                    sender_username   TEXT NOT NULL,
-                    unix_timestamp    INTEGER
-                    )",
-            NO_PARAMS,
-        ).unwrap(); 
-
-
-    return MessageDatabase{
-        conn: conn_r
-    };
-}
-
-impl MessageDatabase{
-    pub fn save_message(&mut self, message: Message) -> bool{
-        self.conn.execute("INSERT INTO message_list (uuid, content, content_type, sender_username, unix_timestamp) (?1, ?2, ?3, ?4, ?5)", 
-        params![message.uuid, 
-        &message.content, 
-        &message.content_type, 
-        &message.sender_username,
-        message.unix_timestamp]).unwrap(); 
-
-        return true; 
-    }
-
-    pub fn get_message(&mut self, uuid: i64) -> Message{
-        let mut message =  Message{
-            uuid: -1, 
-            content: String::from(""),
-            content_type: String::from(""), 
-            sender_username: String::from(""),
-            unix_timestamp: 0
-        }; 
-
-        return message; 
-    }
-}
+mod message_database;
 
 fn main() {
-    let mut message_database = init_message_database();
+    env::set_var("RUST_BACKTRACE", "1");
+
+    let mut message_database = message_database::init_message_database(
+        String::from("main.sql"),
+        String::from("test_conversation"), 
+    );
+    
+    let msg = message_database::Message{
+        uuid: 0,
+        content: String::from("Hello world"), 
+        content_type: String::from("text"),
+        sender_username: String::from("wredenba"), 
+        unix_timestamp: 20
+    };
+
+    message_database.save_message(msg, String::from("test_conversation"));
+
+    let new_msg = message_database.get_message_uuid(0, String::from("test_conversation"));
+
+    println!("{}", new_msg.content);
+    
     //init_message_database(); 
     /*
     let conn = Connection::open_in_memory().unwrap();
