@@ -16,22 +16,29 @@ pub struct MessageDatabase{
     filename: String
 }
 
-pub fn init_message_database(filename_r: String, init_database: String) -> MessageDatabase{
-    let mut conn_r = Connection::open_in_memory().unwrap();
+pub fn init_message_database(open_from_memory: bool, filename_r: String, init_database: String) -> MessageDatabase{
+    let mut conn_r: Connection; 
 
-        let mut exe_str = String::from("CREATE TABLE if not exists ");
-        exe_str.push_str(&init_database); 
-        exe_str.push_str(" (
-            uuid              INTEGER PRIMARY KEY,
-            content           TEXT NOT NULL,
-            content_type      TEXT NOT NULL,
-            sender_username   TEXT NOT NULL,
-            unix_timestamp    INTEGER
-            )");
+    if open_from_memory{
+        conn_r = Connection::open_in_memory().unwrap();
+    }
+    else{
+        conn_r = Connection::open(&filename_r).unwrap();
+    }
 
-        conn_r.execute(&exe_str,
-            NO_PARAMS,
-        ).unwrap();  
+    let mut exe_str = String::from("CREATE TABLE if not exists ");
+    exe_str.push_str(&init_database); 
+    exe_str.push_str(" (
+        uuid              INTEGER PRIMARY KEY,
+        content           TEXT NOT NULL,
+        content_type      TEXT NOT NULL,
+        sender_username   TEXT NOT NULL,
+        unix_timestamp    INTEGER
+        )");
+
+    conn_r.execute(&exe_str,
+        NO_PARAMS,
+    ).unwrap();  
 
     return MessageDatabase{
         conn: conn_r, 
@@ -162,10 +169,10 @@ pub fn _test_cases(){
     env::set_var("RUST_BACKTRACE", "1");
 
     let mut message_database = init_message_database(
-        String::from("main.sql"),
+        false, 
+        String::from("test.db"),
         String::from("test_conversation"), 
     );
-
 
     let mut msg_list = Vec::new(); 
     for x in 0..4096{
@@ -205,4 +212,6 @@ pub fn _test_cases(){
         assert!(msg_a.sender_username.eq(&msg_b.sender_username), "Test case sender_username had issues...");
         assert!(msg_a.unix_timestamp == msg_b.unix_timestamp, "Test case unix_timestamp had issues...");
     }
+
+    println!("Test cases passed successfully");
 }

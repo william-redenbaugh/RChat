@@ -2,3 +2,4 @@
 /server/target
 /client/Cargo.lock
 /server/Cargo.lock
+/server/test.db
