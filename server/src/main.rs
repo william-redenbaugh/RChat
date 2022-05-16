@@ -1,6 +1,5 @@
 use rusqlite::{params, Connection, Result, MappedRows, NO_PARAMS};
 use std::{net::TcpListener, thread::spawn};
-use std::env; 
 use tungstenite::{
     accept_hdr,
     handshake::server::{Request, Response},
@@ -8,27 +7,8 @@ use tungstenite::{
 mod message_database;
 
 fn main() {
-    env::set_var("RUST_BACKTRACE", "1");
+    message_database::_test_cases(); 
 
-    let mut message_database = message_database::init_message_database(
-        String::from("main.sql"),
-        String::from("test_conversation"), 
-    );
-    
-    let msg = message_database::Message{
-        uuid: 0,
-        content: String::from("Hello world"), 
-        content_type: String::from("text"),
-        sender_username: String::from("wredenba"), 
-        unix_timestamp: 20
-    };
-
-    message_database.save_message(msg, String::from("test_conversation"));
-
-    let new_msg = message_database.get_message_uuid(0, String::from("test_conversation"));
-
-    println!("{}", new_msg.content);
-    
     //init_message_database(); 
     /*
     let conn = Connection::open_in_memory().unwrap();

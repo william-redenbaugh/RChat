@@ -1,5 +1,7 @@
 use rusqlite::{params, Connection, Result, MappedRows, NO_PARAMS};
+use std::env; 
 
+#[derive(Clone)]
 pub struct Message{
     pub uuid: i64, 
     pub content: String, 
@@ -52,6 +54,23 @@ impl MessageDatabase{
         return true; 
     }
 
+    pub fn delete_message(&mut self, uuid: i64, message_group: String) -> bool{
+        let mut req_str = String::from("DELETE FROM ");
+        req_str.push_str(&message_group); 
+        req_str.push_str(" WHERE uuid = "); 
+        req_str.push_str(&uuid.to_string());
+
+        let request = self.conn.prepare(&req_str); 
+        match request{
+            Ok(_a)=>{
+                return true; 
+            }
+            Err(e_)=>{
+                return false; 
+            }
+        }
+    }
+
     pub fn get_message_uuid(&mut self, uuid: i64, message_group: String) -> Message{
         let mut message =  Message{
             uuid: -1, 
@@ -65,11 +84,11 @@ impl MessageDatabase{
         req_str.push_str(&message_group); 
         req_str.push_str(" WHERE uuid = "); 
         req_str.push_str(&uuid.to_string());
-        let mut request = self.conn.prepare(&req_str); 
+        let request = self.conn.prepare(&req_str); 
 
         // Error Handling
         match request{
-            Err(e)=>{},
+            Err(_e)=>{},
             Ok(mut stmt)=>{
                 let msg_iter = stmt.query_map([], |row| {
                     Ok(Message{
@@ -85,7 +104,7 @@ impl MessageDatabase{
                             message = msg.unwrap(); 
                         }
                     },
-                    Err(e)=>{}
+                    Err(_e)=>{}
                 };
             }
         }
@@ -100,12 +119,12 @@ impl MessageDatabase{
         req_str.push_str(&message_group); 
         req_str.push_str(" WHERE unix_timestamp = "); 
         req_str.push_str(&timestamp.to_string());
-        let mut request = self.conn.prepare(&req_str);
+        let request = self.conn.prepare(&req_str);
         
         let mut msg_vec = Vec::new(); 
         // Error Handling
         match request{
-            Err(e)=>{
+            Err(_e)=>{
                 return msg_vec; 
             },
             Ok(mut stmt)=>{
@@ -124,11 +143,37 @@ impl MessageDatabase{
                             msg_vec.push(msg.unwrap());
                         }
                     },
-                    Err(e)=>{}
+                    Err(_e)=>{}
                 };
             }
         }
 
         return msg_vec;
     }
+}
+
+pub fn _test_cases(){
+    println!("Testing Message Database Module..."); 
+
+    env::set_var("RUST_BACKTRACE", "1");
+
+
+    let mut message_database = init_message_database(
+        String::from("main.sql"),
+        String::from("test_conversation"), 
+    );
+
+
+    let msg = Message{
+        uuid: 0,
+        content: String::from("Hello world"), 
+        content_type: String::from("text"),
+        sender_username: String::from("wredenba"), 
+        unix_timestamp: 20
+    };
+
+    message_database.save_message(msg, String::from("test_conversation"));
+
+    let new_msg = message_database.get_message_uuid(0, String::from("test_conversation"));
+    println!("{}", new_msg.content);
 }
