@@ -68,17 +68,15 @@ impl MessageDatabase{
         req_str.push_str(" WHERE uuid = "); 
         req_str.push_str(&uuid.to_string());
 
-        let request = self.conn.prepare(&req_str).unwrap(); 
-        /*match request{
+        let request = self.conn.prepare(&req_str);
+        match request{
             Ok(_a)=>{
                 return true; 
             }
-            Err(e_)=>{
-                return false; 
+            Err(_e)=>{
+                println!("There was a problem deleting the message: {}", _e); 
             }
         }
-        */
-
         return true; 
     }
 
