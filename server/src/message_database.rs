@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection, Result, MappedRows, NO_PARAMS};
 use std::env; 
+use rand::{distributions::Alphanumeric, Rng};
 
 #[derive(Clone)]
 pub struct Message{
@@ -60,8 +61,8 @@ impl MessageDatabase{
         req_str.push_str(" WHERE uuid = "); 
         req_str.push_str(&uuid.to_string());
 
-        let request = self.conn.prepare(&req_str); 
-        match request{
+        let request = self.conn.prepare(&req_str).unwrap(); 
+        /*match request{
             Ok(_a)=>{
                 return true; 
             }
@@ -69,6 +70,9 @@ impl MessageDatabase{
                 return false; 
             }
         }
+        */
+
+        return true; 
     }
 
     pub fn get_message_uuid(&mut self, uuid: i64, message_group: String) -> Message{
@@ -157,23 +161,48 @@ pub fn _test_cases(){
 
     env::set_var("RUST_BACKTRACE", "1");
 
-
     let mut message_database = init_message_database(
         String::from("main.sql"),
         String::from("test_conversation"), 
     );
 
 
-    let msg = Message{
-        uuid: 0,
-        content: String::from("Hello world"), 
-        content_type: String::from("text"),
-        sender_username: String::from("wredenba"), 
-        unix_timestamp: 20
-    };
+    let mut msg_list = Vec::new(); 
+    for x in 0..4096{
 
-    message_database.save_message(msg, String::from("test_conversation"));
+        let msg = Message{
+            uuid: x as i64,
+            content: rand::thread_rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(7)
+                    .map(char::from)
+                    .collect(), 
+            content_type: rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(7)
+            .map(char::from)
+            .collect(),
+            sender_username: rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(7)
+            .map(char::from)
+            .collect(), 
+            unix_timestamp: x as u32
+        };
+        
+        // Push to saved places. 
+        msg_list.push(msg.clone());
+        message_database.save_message(msg, String::from("test_conversation"));
+    }
 
-    let new_msg = message_database.get_message_uuid(0, String::from("test_conversation"));
-    println!("{}", new_msg.content);
+    for x in 0..4096{
+        let msg_a = &msg_list[x]; 
+        let msg_b = &message_database.get_message_uuid(x as i64, String::from("test_conversation")); 
+
+        assert!(msg_a.uuid == msg_b.uuid, "Test case uuid had issues...");
+        assert!(msg_a.content.eq(&msg_b.content), "Test case content had issues...");
+        assert!(msg_a.content_type.eq(&msg_b.content_type), "Test case content_type had issues...");
+        assert!(msg_a.sender_username.eq(&msg_b.sender_username), "Test case sender_username had issues...");
+        assert!(msg_a.unix_timestamp == msg_b.unix_timestamp, "Test case unix_timestamp had issues...");
+    }
 }
