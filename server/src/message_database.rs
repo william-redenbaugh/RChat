@@ -68,7 +68,7 @@ impl MessageDatabase{
         req_str.push_str(" WHERE uuid = "); 
         req_str.push_str(&uuid.to_string());
 
-        let request = self.conn.prepare(&req_str);
+        let request = self.conn.execute(&req_str, NO_PARAMS);
         match request{
             Ok(_a)=>{
                 return true; 
@@ -167,7 +167,7 @@ pub fn _test_cases(){
     env::set_var("RUST_BACKTRACE", "1");
 
     let mut message_database = init_message_database(
-        false, 
+        true, 
         String::from("test.db"),
         String::from("test_conversation"), 
     );
@@ -210,6 +210,12 @@ pub fn _test_cases(){
         assert!(msg_a.sender_username.eq(&msg_b.sender_username), "Test case sender_username had issues...");
         assert!(msg_a.unix_timestamp == msg_b.unix_timestamp, "Test case unix_timestamp had issues...");
     }
+
+
+    message_database.delete_message(0, String::from("test_conversation"));
+    let msg_b = &message_database.get_message_uuid(0, String::from("test_conversation")); 
+
+    println!("{}", msg_b.content);
 
     println!("Test cases passed successfully");
 }
