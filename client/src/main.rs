@@ -1,7 +1,7 @@
 use tungstenite::{accept, connect, stream::MaybeTlsStream, Error, Message, WebSocket};
 use std::net::TcpStream;
-
 use url::Url; 
+use ctrlc; 
 
 pub struct MessengerConnection{
     ip: String, 
@@ -46,21 +46,22 @@ impl MessengerConnection{
     }
 }
 
+
 fn main() {
-
     let mut conn = new_connection(String::from("localhost"), String::from("1212"));
-    let is_writing = handle_input(); 
-    
-    if is_writing {
-        let mut input = String::new(); 
-        println!("What is your message?: ");
-        let input_type = std::io::stdin().read_line(&mut input).unwrap();
-        conn.send_message(input);
-    }
-    else{
+    loop{
+        let is_writing = handle_input();
+        if is_writing {
+            let mut input = String::new(); 
+            println!("What is your message?: ");
+            let input_type = std::io::stdin().read_line(&mut input).unwrap();
+            conn.send_message(input);
+        }
 
-        let messages = conn.get_messages();
-        println!("Message Output: {}", messages);
+        else{
+            let messages = conn.get_messages();
+            println!("Message Output: {}", messages);
+        }
     }
 
     conn.close_connection();
