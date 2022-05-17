@@ -1,7 +1,30 @@
 use tungstenite::{accept, connect, stream::MaybeTlsStream, Error, Message, WebSocket};
 use std::net::TcpStream;
 use url::Url; 
+use serde_json::json;
+use std::time::{Duration, SystemTime};
 use ctrlc; 
+
+pub struct UserMessage{
+    username: String,
+    conn: MessengerConnection
+}
+
+impl UserMessage{
+    fn send_message(&mut self, msg: String) -> bool{
+        let msg_json = json!({
+            "content": msg, 
+            "content_type": "text", 
+            "sender_username": &self.username, 
+            "unix_timestamp": SystemTime::now()
+        });
+
+        if self.conn.send_message(msg_json.to_string()){
+            return true; 
+        }
+        return false; 
+    }
+}
 
 pub struct MessengerConnection{
     ip: String, 
@@ -32,13 +55,16 @@ impl MessengerConnection{
         return String::from("");
     }
 
-    pub fn send_message(&mut self, msg: String){
+    pub fn send_message(&mut self, msg: String) -> bool{
         self.socket.write_message(Message::Text(msg.clone().into())).unwrap();
         let msg_ack = self.socket.read_message().expect("Error reading message").to_string();
         
         if !msg.eq(&msg_ack) {
             println!("Message wasn't sent successfully...");
+            return false; 
         }
+
+        return true; 
     }
 
     pub fn close_connection(&mut self){
@@ -49,7 +75,6 @@ impl MessengerConnection{
 
 fn main() {
     let mut conn = new_connection(String::from("localhost"), String::from("1212"));
-    loop{
         let is_writing = handle_input();
         if is_writing {
             let mut input = String::new(); 
@@ -62,8 +87,6 @@ fn main() {
             let messages = conn.get_messages();
             println!("Message Output: {}", messages);
         }
-    }
-
     conn.close_connection();
 }
 
