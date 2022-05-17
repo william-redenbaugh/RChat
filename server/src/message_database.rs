@@ -161,6 +161,8 @@ impl MessageDatabase{
     }
 }
 
+
+const TOTAL_TEST_MESSAGES: usize = 4096; 
 pub fn _test_cases(){
     println!("Testing Message Database Module..."); 
 
@@ -173,7 +175,7 @@ pub fn _test_cases(){
     );
 
     let mut msg_list = Vec::new(); 
-    for x in 0..4096{
+    for x in 0..TOTAL_TEST_MESSAGES{
 
         let msg = Message{
             uuid: x as i64,
@@ -200,7 +202,7 @@ pub fn _test_cases(){
         message_database.save_message(msg, String::from("test_conversation"));
     }
 
-    for x in 0..4096{
+    for x in 0..TOTAL_TEST_MESSAGES{
         let msg_a = &msg_list[x]; 
         let msg_b = &message_database.get_message_uuid(x as i64, String::from("test_conversation")); 
 
