@@ -5,24 +5,26 @@ use serde_json::json;
 use std::time::{Duration, SystemTime};
 use ctrlc; 
 
+fn user_message_handler(username_r: String) -> UserMessage{
+    return UserMessage{
+        username: username_r
+    }; 
+}
+
 pub struct UserMessage{
-    username: String,
-    conn: MessengerConnection
+    username: String
 }
 
 impl UserMessage{
-    fn send_message(&mut self, msg: String) -> bool{
+    fn message(&mut self, mut msg: String) ->String{
+        msg.pop();
         let msg_json = json!({
             "content": msg, 
             "content_type": "text", 
             "sender_username": &self.username, 
             "unix_timestamp": SystemTime::now()
         });
-
-        if self.conn.send_message(msg_json.to_string()){
-            return true; 
-        }
-        return false; 
+        return msg_json.to_string();   
     }
 }
 
@@ -75,18 +77,14 @@ impl MessengerConnection{
 
 fn main() {
     let mut conn = new_connection(String::from("localhost"), String::from("1212"));
-        let is_writing = handle_input();
-        if is_writing {
-            let mut input = String::new(); 
-            println!("What is your message?: ");
-            let input_type = std::io::stdin().read_line(&mut input).unwrap();
-            conn.send_message(input);
-        }
+    let mut user_message = user_message_handler(String::from("wredenba"));
 
-        else{
-            let messages = conn.get_messages();
-            println!("Message Output: {}", messages);
-        }
+    let mut input = String::new(); 
+    println!("What is your message?: ");
+    let input_type = std::io::stdin().read_line(&mut input).unwrap();
+    
+    conn.send_message(user_message.message(input));
+
     conn.close_connection();
 }
 
