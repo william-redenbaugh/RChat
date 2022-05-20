@@ -34,16 +34,17 @@ fn process_message(msg: String) -> Result<message_database::Message, bool>{
 fn database_handler_thread(rx_msg:  std::sync::mpsc::Receiver<message_database::Message>){
     let mut message_database = message_database::init_message_database(true, 
         String::from("msg.sql"), 
-        String::from("wredenba_01")); 
+        String::from("wredenba")); 
 
     loop{
         let msg_req = rx_msg.recv(); 
         match msg_req{
             Ok(msg)=> {
-                message_database.save_message(msg, String::from("wredenba_01"));
+                //message_database.save_message(msg, String::from("wredenba"));
+                println!("{}", msg.content);
             }, 
             Err(e)=>{
-                 println!("Had issues getting message from pipeline: {}", e);
+                println!("Had issues getting message from pipeline: {}", e);
             }
         }
     }
