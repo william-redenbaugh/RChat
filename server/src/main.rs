@@ -7,7 +7,15 @@ use tungstenite::{
 use serde_json::{Result as JsonResult, Value};
 use std::sync::mpsc::channel;
 mod message_database;
+use std::time::{Duration, SystemTime};
 
+fn abs_int(x: i64) -> u64 {
+    if x < 0{
+        return (x * -1) as u64; 
+    }
+
+    return x as u64; 
+}
 
 // Still working on handing parsing of the message
 fn process_message(msg: String) -> Result<message_database::Message, bool>{
@@ -22,6 +30,12 @@ fn process_message(msg: String) -> Result<message_database::Message, bool>{
                 unix_timestamp: (value["unix_timestamp"]["secs_since_epoch"]
                                     .to_string().parse::<u32>().unwrap())
             };
+
+            let now = SystemTime::now();
+
+            if abs_int((msg_struct.unix_timestamp as i64 - now.elapsed().unwrap().as_secs() as i64)) >  130{
+                return Err(false);
+            }
             return Ok(msg_struct)
         }
         Err(e)=>{
