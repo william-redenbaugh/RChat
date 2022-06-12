@@ -19,6 +19,7 @@ impl UserMessage{
     fn message(&mut self, mut msg: String) ->String{
         msg.pop();
         let msg_json = json!({
+            "request_type": "send_msg",
             "content": msg, 
             "content_type": "text", 
             "sender_username": &self.username, 
@@ -58,14 +59,9 @@ impl MessengerConnection{
     }
 
     pub fn send_message(&mut self, msg: String) -> bool{
+        println!("msg: {}", msg);
         self.socket.write_message(Message::Text(msg.clone().into())).unwrap();
-        let msg_ack = self.socket.read_message().expect("Error reading message").to_string();
         
-        if !msg.eq(&msg_ack) {
-            println!("Message wasn't sent successfully...");
-            return false; 
-        }
-
         return true; 
     }
 
@@ -76,15 +72,14 @@ impl MessengerConnection{
 
 
 fn main() {
-    let mut conn = new_connection(String::from("localhost"), String::from("1212"));
-    let mut user_message = user_message_handler(String::from("wredenba"));
-
+    
     let mut input = String::new(); 
     println!("What is your message?: ");
     let input_type = std::io::stdin().read_line(&mut input).unwrap();
-    
-    conn.send_message(user_message.message(input));
+    let mut conn = new_connection(String::from("localhost"), String::from("1212"));
+    let mut user_message = user_message_handler(String::from("wredenba"));
 
+    conn.send_message(user_message.message(input));
     conn.close_connection();
 }
 
@@ -101,4 +96,3 @@ fn handle_input() -> bool{
         return true;    
     }
 }
-
