@@ -7,7 +7,13 @@ use tungstenite::{
 use serde_json::{Result as JsonResult, Value};
 use std::sync::mpsc::channel;
 mod message_database;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+const INT64_BITS: i64 = 64; 
+
+fn rotate_bits(n: i64, d: i8) -> i64{
+    return (n << d)|(n >> (INT64_BITS - d as i64));
+}
 
 fn abs_int(x: i64) -> u64 {
     if x < 0{
@@ -27,13 +33,18 @@ fn input_message_database(tx_clone: std::sync::mpsc::Sender<message_database::Me
         unix_timestamp: (value["unix_timestamp"]["secs_since_epoch"]
                             .to_string().parse::<u32>().unwrap())
     };
-    let now = SystemTime::now();
-    if abs_int((msg_struct.unix_timestamp as i64 - now.elapsed().unwrap().as_secs() as i64)) >  130{
+
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+
+    if abs_int(msg_struct.unix_timestamp as i64 - now.as_secs() as i64) >  130{
+        println!("Message process timout!");
         return false;
     }
-    
+
+    let val = rotate_bits(now.as_nanos() as i64, 13); 
+    msg_struct.uuid = val;
     match tx_clone.send(msg_struct) {
-        Ok(a)=> return true, 
+        Ok(_a)=> return true, 
         Err(e)=>{
             println!("Error sending data to database thread... {}", e);
             return false; 
@@ -50,8 +61,8 @@ fn database_handler_thread(rx_msg:  std::sync::mpsc::Receiver<message_database::
         let msg_req = rx_msg.recv(); 
         match msg_req{
             Ok(msg)=> {
-                //message_database.save_message(msg, String::from("wredenba"));
-                println!("{}", msg.content);
+                message_database.save_message(msg, String::from("wredenba"));
+                
             }, 
             Err(e)=>{
                 println!("Had issues getting message from pipeline: {}", e);
@@ -61,7 +72,6 @@ fn database_handler_thread(rx_msg:  std::sync::mpsc::Receiver<message_database::
 }
 
 fn process_incoming_packet(msg: String, tx_clone: std::sync::mpsc::Sender<message_database::Message>) -> bool{
-
     let json_req: Result<serde_json::Value, serde_json::Error> = serde_json::from_str(&msg);
     let mut json_parse: serde_json::Value;
 
@@ -73,7 +83,7 @@ fn process_incoming_packet(msg: String, tx_clone: std::sync::mpsc::Sender<messag
         }
     }
     
-    if json_parse["request_type"].to_string() == "send_msg"{
+    if json_parse["request_type"].to_string() == "\"send_msg\""{
         return input_message_database(tx_clone, json_parse.clone());        
     }
     else{
