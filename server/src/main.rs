@@ -23,7 +23,10 @@ fn abs_int(x: i64) -> u64 {
     return x as u64; 
 }
 
-// Still working on handing parsing of the message
+fn get_message_database(){
+    
+}
+
 fn input_message_database(tx_clone: std::sync::mpsc::Sender<message_database::Message>, value: serde_json::Value) -> bool{
     let mut msg_struct =  message_database::Message {
         uuid: 0, 
@@ -83,13 +86,15 @@ fn process_incoming_packet(msg: String, tx_clone: std::sync::mpsc::Sender<messag
         }
     }
     
-    if json_parse["request_type"].to_string() == "\"send_msg\""{
-        return input_message_database(tx_clone, json_parse.clone());        
+    match json_parse["request_type"].to_string().as_str() {
+        "\"send_msg\"" =>{
+            return input_message_database(tx_clone, json_parse.clone());
+        },
+        "\"get_msg_list\"" =>{
+            return true; 
+        },     
+        _ => return false
     }
-    else{
-        return false; 
-    }
-
 }
 
 fn chatserver_handler_thread(tx_mesg: std::sync::mpsc::Sender<message_database::Message>){

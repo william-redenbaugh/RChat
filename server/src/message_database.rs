@@ -159,8 +159,43 @@ impl MessageDatabase{
 
         return msg_vec;
     }
-}
 
+    fn get_all_messages(&mut self, message_group: String) -> Vec<Message>{
+        // Issue and process request...
+        let mut req_str = String::from("SELECT uuid, content, content_type, sender_username, unix_timestamp FROM ");
+        req_str.push_str(&message_group); 
+        let request = self.conn.prepare(&req_str);
+        
+        let mut msg_vec = Vec::new(); 
+        // Error Handling
+        match request{
+            Err(_e)=>{
+                return msg_vec; 
+            },
+            Ok(mut stmt)=>{
+                // Iterate through SQL matches and return...
+                let msg_iter = stmt.query_map([], |row| {
+                    Ok(Message{
+                        uuid: row.get(0).unwrap(), 
+                        content: row.get(1).unwrap(),
+                        content_type: row.get(2).unwrap(), 
+                        sender_username: row.get(3).unwrap(),
+                        unix_timestamp: row.get(4).unwrap()})
+                }); 
+                match msg_iter {
+                    Ok(msg_ite)=>{
+                        for msg in  msg_ite{
+                            msg_vec.push(msg.unwrap());
+                        }
+                    },
+                    Err(_e)=>{}
+                };
+            }
+        }
+
+        return msg_vec;
+    }
+}
 
 const TOTAL_TEST_MESSAGES: usize = 4096; 
 pub fn _test_cases(){
