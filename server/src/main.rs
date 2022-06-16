@@ -8,6 +8,34 @@ use serde_json::{Result as JsonResult, Value};
 use std::sync::mpsc::channel;
 mod message_database;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::mpsc::{Sender, Receiver};
+
+pub enum DatabaseServerReqType{
+    REQUEST_SEND_MESSAGE,
+    REQUEST_ALL_MESSAGES, 
+    REQUEST_MESSAGE_TIMESTAMP, 
+    REQUEST_MESSAGE_UUID, 
+    REQUEST_MESSAGE_USER
+}
+
+pub struct DatabaseServerReq{
+    pub upper_bounds: i64, 
+    pub lower_bounds: i64, 
+    pub user_req: String, 
+    pub req_type: DatabaseServerReqType, 
+    pub return_pipe: Sender<Vec<message_database::Message>>   
+}
+
+fn new_database_server_req(req_type_n: DatabaseServerReqType) -> (DatabaseServerReq, Receiver<Vec<message_database::Message>>){
+    let (mut send_pipe, mut return_pipe) = channel();
+    return (DatabaseServerReq{
+        upper_bounds: 0,
+        lower_bounds: 0, 
+        user_req: String::new(), 
+        req_type: req_type_n,
+        return_pipe: send_pipe
+    }, return_pipe);
+}
 
 const INT64_BITS: i64 = 64; 
 
@@ -24,10 +52,10 @@ fn abs_int(x: i64) -> u64 {
 }
 
 fn get_message_database(){
-    
+
 }
 
-fn input_message_database(tx_clone: std::sync::mpsc::Sender<message_database::Message>, value: serde_json::Value) -> bool{
+fn input_message_database(tx_clone: Sender<message_database::Message>, tx_req_clone: Sender<DatabaseServerReq>, value: serde_json::Value) -> bool{
     let mut msg_struct =  message_database::Message {
         uuid: 0, 
         content: value["content"].to_string(), 
@@ -46,6 +74,19 @@ fn input_message_database(tx_clone: std::sync::mpsc::Sender<message_database::Me
 
     let val = rotate_bits(now.as_nanos() as i64, 13); 
     msg_struct.uuid = val;
+
+    let (database_server_req, _) = new_database_server_req(DatabaseServerReqType::REQUEST_SEND_MESSAGE); 
+
+    match tx_req_clone.send(database_server_req){
+        Ok(_)=>{
+            // We were able to send the request properly
+        }
+        Err(e)=>{
+            println!("Error sending request data to database thread... {}", e);
+            return false; 
+        }
+    }
+
     match tx_clone.send(msg_struct) {
         Ok(_a)=> return true, 
         Err(e)=>{
@@ -55,26 +96,43 @@ fn input_message_database(tx_clone: std::sync::mpsc::Sender<message_database::Me
     }
 }
 
-fn database_handler_thread(rx_msg:  std::sync::mpsc::Receiver<message_database::Message>){
+fn database_handler_thread(rx_msg:  Receiver<message_database::Message>, rx_mesg_req: Receiver<DatabaseServerReq>){
     let mut message_database = message_database::init_message_database(true, 
         String::from("msg.sql"), 
         String::from("wredenba")); 
 
+    let mut msg_list = message_database.get_all_messages(String::from("wredenba"));
+
     loop{
-        let msg_req = rx_msg.recv(); 
-        match msg_req{
-            Ok(msg)=> {
-                message_database.save_message(msg, String::from("wredenba"));
-                
+        let msg_req_type = rx_mesg_req.recv();
+        match msg_req_type{
+            Ok(msg_type)=> {
+                match (msg_type){
+                    REQUEST_SEND_MESSAGE=>{
+                        let msg_req = rx_msg.recv(); 
+                        match msg_req{
+                            Ok(msg)=>{
+                                message_database.save_message(msg, String::from("wredenba"));
+                            }
+                            Err(e)=>{
+                                println!("Had issues getting message request from pipeline: {}", e);
+                            }
+                        }
+                    },
+                    REQUEST_ALL_MESSAGES=>{}, 
+                    REQUEST_MESSAGE_TIMESTAMP=>{}, 
+                    REQUEST_MESSAGE_UUID=>{}, 
+                    REQUEST_MESSAGE_USER=>{},
+                }
             }, 
             Err(e)=>{
-                println!("Had issues getting message from pipeline: {}", e);
+                println!("Had issues getting message request from pipeline: {}", e);
             }
         }
     }
 }
 
-fn process_incoming_packet(msg: String, tx_clone: std::sync::mpsc::Sender<message_database::Message>) -> bool{
+fn process_incoming_packet(msg: String, tx_clone: Sender<message_database::Message>, tx_req_clone: Sender<DatabaseServerReq>) -> bool{
     let json_req: Result<serde_json::Value, serde_json::Error> = serde_json::from_str(&msg);
     let mut json_parse: serde_json::Value;
 
@@ -88,7 +146,7 @@ fn process_incoming_packet(msg: String, tx_clone: std::sync::mpsc::Sender<messag
     
     match json_parse["request_type"].to_string().as_str() {
         "\"send_msg\"" =>{
-            return input_message_database(tx_clone, json_parse.clone());
+            return input_message_database(tx_clone, tx_req_clone, json_parse.clone());
         },
         "\"get_msg_list\"" =>{
             return true; 
@@ -97,10 +155,11 @@ fn process_incoming_packet(msg: String, tx_clone: std::sync::mpsc::Sender<messag
     }
 }
 
-fn chatserver_handler_thread(tx_mesg: std::sync::mpsc::Sender<message_database::Message>){
+fn chatserver_handler_thread(tx_mesg: Sender<message_database::Message>, tx_mesg_req: Sender<DatabaseServerReq>){
     let server = TcpListener::bind("127.0.0.1:1212").unwrap();
     for stream in server.incoming() {
-        let tx_clone = tx_mesg.clone(); 
+        let tx_clone = tx_mesg.clone();
+        let tx_req_clone = tx_mesg_req.clone(); 
         spawn(move || {
             let callback = |req: &Request, mut response: Response| {
                 println!("Received a new ws handshake");
@@ -127,7 +186,7 @@ fn chatserver_handler_thread(tx_mesg: std::sync::mpsc::Sender<message_database::
                     }
                     Ok(msg)=>{
                         if msg.len() > 0 {
-                            process_incoming_packet(msg.to_string(), tx_clone.clone()); 
+                            process_incoming_packet(msg.to_string(), tx_clone.clone(), tx_req_clone.clone()); 
                         }
                     }
                 }
@@ -137,9 +196,11 @@ fn chatserver_handler_thread(tx_mesg: std::sync::mpsc::Sender<message_database::
 }
 
 fn main() {
-
-    // Create a simple streaming channel
+    // Create a simple message_streaming_channel
     let (tx_mesg, rx_msg) = channel();
-    spawn(|| {database_handler_thread(rx_msg)});
-    chatserver_handler_thread(tx_mesg); 
+
+    let (tx_mesg_req, rx_mesg_req) = channel(); 
+
+    spawn(|| {database_handler_thread(rx_msg, rx_mesg_req)});
+    chatserver_handler_thread(tx_mesg, tx_mesg_req); 
 }

@@ -160,7 +160,7 @@ impl MessageDatabase{
         return msg_vec;
     }
 
-    fn get_all_messages(&mut self, message_group: String) -> Vec<Message>{
+    pub fn get_all_messages(&mut self, message_group: String) -> Vec<Message>{
         // Issue and process request...
         let mut req_str = String::from("SELECT uuid, content, content_type, sender_username, unix_timestamp FROM ");
         req_str.push_str(&message_group); 
