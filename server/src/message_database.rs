@@ -1,8 +1,9 @@
-use rusqlite::{params, Connection, Result, MappedRows, NO_PARAMS};
+use rusqlite::{params, Connection};
 use std::env; 
 use rand::{distributions::Alphanumeric, Rng};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Message{
     pub uuid: i64, 
     pub content: String, 
@@ -13,11 +14,11 @@ pub struct Message{
 
 pub struct MessageDatabase{
     conn: Connection,
-    filename: String
+    _filename: String
 }
 
 pub fn init_message_database(open_from_memory: bool, filename_r: String, init_database: String) -> MessageDatabase{
-    let mut conn_r: Connection; 
+    let conn_r: Connection; 
 
     if open_from_memory{
         conn_r = Connection::open_in_memory().unwrap();
@@ -37,12 +38,12 @@ pub fn init_message_database(open_from_memory: bool, filename_r: String, init_da
         )");
 
     conn_r.execute(&exe_str,
-        NO_PARAMS,
+        [],
     ).unwrap();  
 
     return MessageDatabase{
         conn: conn_r, 
-        filename: filename_r
+        _filename: filename_r
     };
 }
 
@@ -68,7 +69,7 @@ impl MessageDatabase{
         req_str.push_str(" WHERE uuid = "); 
         req_str.push_str(&uuid.to_string());
 
-        let request = self.conn.execute(&req_str, NO_PARAMS);
+        let request = self.conn.execute(&req_str, []);
         match request{
             Ok(_a)=>{
                 return true; 

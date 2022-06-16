@@ -1,13 +1,13 @@
-use rusqlite::{params, Connection, Result, MappedRows, NO_PARAMS};
-use std::{net::TcpListener, thread::spawn, thread};
+use rusqlite::{Result};
+use std::{net::TcpListener, net::TcpStream, thread::spawn};
 use tungstenite::{
     accept_hdr,
     handshake::server::{Request, Response},
+    protocol::WebSocket
 };
-use serde_json::{Result as JsonResult, Value};
 use std::sync::mpsc::channel;
 mod message_database;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::mpsc::{Sender, Receiver};
 
 pub enum DatabaseServerReqType{
@@ -27,7 +27,7 @@ pub struct DatabaseServerReq{
 }
 
 fn new_database_server_req(req_type_n: DatabaseServerReqType) -> (DatabaseServerReq, Receiver<Vec<message_database::Message>>){
-    let (mut send_pipe, mut return_pipe) = channel();
+    let (send_pipe, return_pipe) = channel();
     return (DatabaseServerReq{
         upper_bounds: 0,
         lower_bounds: 0, 
@@ -51,8 +51,23 @@ fn abs_int(x: i64) -> u64 {
     return x as u64; 
 }
 
-fn get_message_database(){
+fn get_message_database(tx_req_clone: Sender<DatabaseServerReq>) -> Vec<message_database::Message>{
+    let (database_server_req, return_pipe) = new_database_server_req(DatabaseServerReqType::REQUEST_SEND_MESSAGE); 
 
+    match tx_req_clone.send(database_server_req){
+        Ok(_)=>{
+            match return_pipe.recv(){
+                Ok(msg_list)=>return msg_list, 
+                Err(e)=>println!("Error getting message database list back to network handler thread: {}", e)
+            }
+        }
+        Err(e)=>{
+            println!("Error sending request data to database thread... {}", e);
+        }
+    }
+
+    let msg_list_empty = Vec::new(); 
+    return msg_list_empty
 }
 
 fn input_message_database(tx_clone: Sender<message_database::Message>, tx_req_clone: Sender<DatabaseServerReq>, value: serde_json::Value) -> bool{
@@ -101,13 +116,11 @@ fn database_handler_thread(rx_msg:  Receiver<message_database::Message>, rx_mesg
         String::from("msg.sql"), 
         String::from("wredenba")); 
 
-    let mut msg_list = message_database.get_all_messages(String::from("wredenba"));
-
     loop{
         let msg_req_type = rx_mesg_req.recv();
         match msg_req_type{
             Ok(msg_type)=> {
-                match (msg_type){
+                match  msg_type {
                     REQUEST_SEND_MESSAGE=>{
                         let msg_req = rx_msg.recv(); 
                         match msg_req{
@@ -119,7 +132,9 @@ fn database_handler_thread(rx_msg:  Receiver<message_database::Message>, rx_mesg
                             }
                         }
                     },
-                    REQUEST_ALL_MESSAGES=>{}, 
+                    REQUEST_ALL_MESSAGES=>{
+                       let _msg_list = message_database.get_all_messages(String::from("wredenba"));
+                    }, 
                     REQUEST_MESSAGE_TIMESTAMP=>{}, 
                     REQUEST_MESSAGE_UUID=>{}, 
                     REQUEST_MESSAGE_USER=>{},
@@ -132,9 +147,9 @@ fn database_handler_thread(rx_msg:  Receiver<message_database::Message>, rx_mesg
     }
 }
 
-fn process_incoming_packet(msg: String, tx_clone: Sender<message_database::Message>, tx_req_clone: Sender<DatabaseServerReq>) -> bool{
+fn process_incoming_packet(socket: &mut WebSocket<TcpStream>, msg: String, tx_clone: Sender<message_database::Message>, tx_req_clone: Sender<DatabaseServerReq>) -> bool{
     let json_req: Result<serde_json::Value, serde_json::Error> = serde_json::from_str(&msg);
-    let mut json_parse: serde_json::Value;
+    let json_parse: serde_json::Value;
 
     match json_req {
         Ok(data)=>json_parse = data, 
@@ -149,7 +164,16 @@ fn process_incoming_packet(msg: String, tx_clone: Sender<message_database::Messa
             return input_message_database(tx_clone, tx_req_clone, json_parse.clone());
         },
         "\"get_msg_list\"" =>{
-            return true; 
+            let msg_list = get_message_database(tx_req_clone);
+            let msg_list_string = serde_json::to_string(&msg_list).unwrap();
+            
+            match socket.write_message(tungstenite::Message::Text(msg_list_string)){
+                Ok(_)=>return true, 
+                Err(e)=>{
+                    println!("We weren't able to send message back to client: {}", e);
+                    return false; 
+                }
+            }
         },     
         _ => return false
     }
@@ -186,7 +210,7 @@ fn chatserver_handler_thread(tx_mesg: Sender<message_database::Message>, tx_mesg
                     }
                     Ok(msg)=>{
                         if msg.len() > 0 {
-                            process_incoming_packet(msg.to_string(), tx_clone.clone(), tx_req_clone.clone()); 
+                            process_incoming_packet(&mut websocket, msg.to_string(), tx_clone.clone(), tx_req_clone.clone()); 
                         }
                     }
                 }
