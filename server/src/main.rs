@@ -37,6 +37,14 @@ fn new_database_server_req(req_type_n: DatabaseServerReqType) -> (DatabaseServer
     }, return_pipe);
 }
 
+fn rm_first_last_char(target: String) -> String{
+    let mut chars = target.chars();
+    chars.next();
+    chars.next_back();
+    let formatted_content = chars.as_str().to_string(); 
+    return formatted_content; 
+}
+
 const INT64_BITS: i64 = 64; 
 
 fn rotate_bits(n: i64, d: i8) -> i64{
@@ -71,22 +79,25 @@ fn get_message_database(tx_req_clone: Sender<DatabaseServerReq>) -> Vec<message_
 }
 
 fn input_message_database(tx_clone: Sender<message_database::Message>, tx_req_clone: Sender<DatabaseServerReq>, value: serde_json::Value) -> bool{
+    let formatted_content = rm_first_last_char(value["content"].to_string().clone());
+    let formatted_content_type = rm_first_last_char(value["content_type"].to_string().clone());
+    let formatted_user = rm_first_last_char(value["content_type"].to_string().clone());
+    
     let mut msg_struct =  message_database::Message {
         uuid: 0, 
-        content: value["content"].to_string(), 
-        content_type: value["content_type"].to_string(), 
-        sender_username: value["sender_username"].to_string(), 
+        content: formatted_content, 
+        content_type: formatted_content_type, 
+        sender_username: formatted_user, 
         unix_timestamp: (value["unix_timestamp"]["secs_since_epoch"]
                             .to_string().parse::<u32>().unwrap())
     };
-
+    
+    // Generate our UUID based off the timestamp given to us
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-
     if abs_int(msg_struct.unix_timestamp as i64 - now.as_secs() as i64) >  130{
         println!("Message process timout!");
         return false;
     }
-
     let val = rotate_bits(now.as_nanos() as i64, 13); 
     msg_struct.uuid = val;
 
@@ -111,7 +122,34 @@ fn input_message_database(tx_clone: Sender<message_database::Message>, tx_req_cl
     }
 }
 
-fn database_handler_thread(rx_msg:  Receiver<message_database::Message>, rx_mesg_req: Receiver<DatabaseServerReq>){
+fn process_req_database(message_database: &mut message_database::MessageDatabase, msg_type: &DatabaseServerReq, rx_msg:  &mut Receiver<message_database::Message>){
+    match  msg_type {
+        REQUEST_SEND_MESSAGE=>{
+            let msg_req = rx_msg.recv(); 
+            match msg_req{
+                Ok(msg)=>{
+                    println!("{}", &msg.sender_username);
+                    message_database.save_message(msg, String::from("wredenba"));
+                }
+                Err(e)=>{
+                    println!("Had issues getting message request from pipeline: {}", e);
+                }
+            }
+            
+        },
+        REQUEST_ALL_MESSAGES=>{
+            
+            println!("Return all messages...");
+            let msg_list = message_database.get_all_messages(String::from("wredenba"));
+            msg_type.return_pipe.send(msg_list); 
+        }, 
+        REQUEST_MESSAGE_TIMESTAMP=>{}, 
+        REQUEST_MESSAGE_UUID=>{}, 
+        REQUEST_MESSAGE_USER=>{},
+    }
+}
+
+fn database_handler_thread(mut rx_msg: Receiver<message_database::Message>, rx_mesg_req: Receiver<DatabaseServerReq>){
     let mut message_database = message_database::init_message_database(true, 
         String::from("msg.sql"), 
         String::from("wredenba")); 
@@ -120,25 +158,7 @@ fn database_handler_thread(rx_msg:  Receiver<message_database::Message>, rx_mesg
         let msg_req_type = rx_mesg_req.recv();
         match msg_req_type{
             Ok(msg_type)=> {
-                match  msg_type {
-                    REQUEST_SEND_MESSAGE=>{
-                        let msg_req = rx_msg.recv(); 
-                        match msg_req{
-                            Ok(msg)=>{
-                                message_database.save_message(msg, String::from("wredenba"));
-                            }
-                            Err(e)=>{
-                                println!("Had issues getting message request from pipeline: {}", e);
-                            }
-                        }
-                    },
-                    REQUEST_ALL_MESSAGES=>{
-                       let _msg_list = message_database.get_all_messages(String::from("wredenba"));
-                    }, 
-                    REQUEST_MESSAGE_TIMESTAMP=>{}, 
-                    REQUEST_MESSAGE_UUID=>{}, 
-                    REQUEST_MESSAGE_USER=>{},
-                }
+               process_req_database(&mut message_database, &msg_type, &mut rx_msg) 
             }, 
             Err(e)=>{
                 println!("Had issues getting message request from pipeline: {}", e);
@@ -221,7 +241,7 @@ fn chatserver_handler_thread(tx_mesg: Sender<message_database::Message>, tx_mesg
 
 fn main() {
     // Create a simple message_streaming_channel
-    let (tx_mesg, rx_msg) = channel();
+    let (tx_mesg, mut rx_msg) = channel();
 
     let (tx_mesg_req, rx_mesg_req) = channel(); 
 
