@@ -10,6 +10,7 @@ mod message_database;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::mpsc::{Sender, Receiver};
 
+#[derive(Debug)]
 pub enum DatabaseServerReqType{
     REQUEST_SEND_MESSAGE,
     REQUEST_ALL_MESSAGES, 
@@ -60,7 +61,7 @@ fn abs_int(x: i64) -> u64 {
 }
 
 fn get_message_database(tx_req_clone: Sender<DatabaseServerReq>) -> Vec<message_database::Message>{
-    let (database_server_req, return_pipe) = new_database_server_req(DatabaseServerReqType::REQUEST_SEND_MESSAGE); 
+    let (database_server_req, return_pipe) = new_database_server_req(DatabaseServerReqType::REQUEST_ALL_MESSAGES); 
 
     match tx_req_clone.send(database_server_req){
         Ok(_)=>{
@@ -123,8 +124,10 @@ fn input_message_database(tx_clone: Sender<message_database::Message>, tx_req_cl
 }
 
 fn process_req_database(message_database: &mut message_database::MessageDatabase, msg_type: &DatabaseServerReq, rx_msg:  &mut Receiver<message_database::Message>){
-    match  msg_type {
-        REQUEST_SEND_MESSAGE=>{
+    
+    println!("{:?}", &msg_type.req_type);
+    match  &msg_type.req_type {
+        DatabaseServerReqType::REQUEST_SEND_MESSAGE=>{
             let msg_req = rx_msg.recv(); 
             match msg_req{
                 Ok(msg)=>{
@@ -137,15 +140,14 @@ fn process_req_database(message_database: &mut message_database::MessageDatabase
             }
             
         },
-        REQUEST_ALL_MESSAGES=>{
-            
+        DatabaseServerReqType::REQUEST_ALL_MESSAGES=>{
             println!("Return all messages...");
             let msg_list = message_database.get_all_messages(String::from("wredenba"));
-            msg_type.return_pipe.send(msg_list); 
+            msg_type.return_pipe.send(msg_list).unwrap(); 
         }, 
-        REQUEST_MESSAGE_TIMESTAMP=>{}, 
-        REQUEST_MESSAGE_UUID=>{}, 
-        REQUEST_MESSAGE_USER=>{},
+        DatabaseServerReqType::REQUEST_MESSAGE_TIMESTAMP=>{}, 
+        DatabaseServerReqType::REQUEST_MESSAGE_UUID=>{}, 
+        DatabaseServerReqType::REQUEST_MESSAGE_USER=>{},
     }
 }
 
@@ -155,10 +157,11 @@ fn database_handler_thread(mut rx_msg: Receiver<message_database::Message>, rx_m
         String::from("wredenba")); 
 
     loop{
+
         let msg_req_type = rx_mesg_req.recv();
         match msg_req_type{
             Ok(msg_type)=> {
-               process_req_database(&mut message_database, &msg_type, &mut rx_msg) 
+                process_req_database(&mut message_database, &msg_type, &mut rx_msg) 
             }, 
             Err(e)=>{
                 println!("Had issues getting message request from pipeline: {}", e);
@@ -179,24 +182,25 @@ fn process_incoming_packet(socket: &mut WebSocket<TcpStream>, msg: String, tx_cl
         }
     }
     
-    match json_parse["request_type"].to_string().as_str() {
-        "\"send_msg\"" =>{
-            return input_message_database(tx_clone, tx_req_clone, json_parse.clone());
-        },
-        "\"get_msg_list\"" =>{
-            let msg_list = get_message_database(tx_req_clone);
-            let msg_list_string = serde_json::to_string(&msg_list).unwrap();
-            
-            match socket.write_message(tungstenite::Message::Text(msg_list_string)){
-                Ok(_)=>return true, 
-                Err(e)=>{
-                    println!("We weren't able to send message back to client: {}", e);
-                    return false; 
-                }
-            }
-        },     
-        _ => return false
+    
+    if json_parse["request_type"].to_string().eq("\"send_msg\"") {
+        return input_message_database(tx_clone, tx_req_clone, json_parse.clone());
     }
+
+    if json_parse["request_type"].to_string().eq("\"get_msg_list\"") {
+        
+        let msg_list = get_message_database(tx_req_clone);
+        let msg_list_string = serde_json::to_string(&msg_list).unwrap();
+        match socket.write_message(tungstenite::Message::Text(msg_list_string)){
+            Ok(_)=>return true, 
+            Err(e)=>{
+                println!("We weren't able to send message back to client: {}", e);
+                return false; 
+            }
+        }
+    }
+
+    return false; 
 }
 
 fn chatserver_handler_thread(tx_mesg: Sender<message_database::Message>, tx_mesg_req: Sender<DatabaseServerReq>){
