@@ -19,6 +19,7 @@ impl UserMessage{
     fn message(&mut self, mut msg: String) ->String{
         msg.pop();
         let msg_json = json!({
+            "request_type": "send_msg",
             "content": msg, 
             "content_type": "text", 
             "sender_username": &self.username, 
@@ -31,10 +32,11 @@ impl UserMessage{
 pub struct MessengerConnection{
     ip: String, 
     port: String, 
-    socket: WebSocket<MaybeTlsStream<TcpStream>>
+    socket: WebSocket<MaybeTlsStream<TcpStream>>, 
+    username: String
 }
 
-fn new_connection(ip_in: String, port_in: String)->MessengerConnection{
+fn new_connection(m_username: String, ip_in: String, port_in: String)->MessengerConnection{
     
     let mut str = String::from("ws://"); 
     str.push_str(&ip_in);
@@ -47,25 +49,26 @@ fn new_connection(ip_in: String, port_in: String)->MessengerConnection{
     return MessengerConnection { 
         ip: ip_in,
         port: port_in ,
-        socket: m_socket
+        socket: m_socket, 
+        username: m_username
     };
 }
 
 impl MessengerConnection{
     pub fn get_messages(&mut self) -> String{
+        let msg_json = json!({
+            "request_type": "get_msg_list"
+        });
+        let msg = msg_json.to_string();
+        self.socket.write_message(Message::Text(msg.clone().into())).unwrap();
 
-        return String::from("");
+        return self.socket.read_message().unwrap().to_string(); 
     }
 
     pub fn send_message(&mut self, msg: String) -> bool{
+        println!("msg: {}", msg);
         self.socket.write_message(Message::Text(msg.clone().into())).unwrap();
-        let msg_ack = self.socket.read_message().expect("Error reading message").to_string();
         
-        if !msg.eq(&msg_ack) {
-            println!("Message wasn't sent successfully...");
-            return false; 
-        }
-
         return true; 
     }
 
@@ -74,16 +77,23 @@ impl MessengerConnection{
     }
 }
 
+use std::{thread, time};
+
 
 fn main() {
-    let mut conn = new_connection(String::from("localhost"), String::from("1212"));
-    let mut user_message = user_message_handler(String::from("wredenba"));
-
+    
     let mut input = String::new(); 
     println!("What is your message?: ");
     let input_type = std::io::stdin().read_line(&mut input).unwrap();
-    
+    let mut conn = new_connection(String::from("wredenba"), String::from("localhost"), String::from("1212"));
+    let mut user_message = user_message_handler(String::from("wredenba"));
     conn.send_message(user_message.message(input));
+
+    let ten_millis = time::Duration::from_millis(100);
+    thread::sleep(ten_millis);
+
+    let messages = conn.get_messages(); 
+    println!("{}", messages);
 
     conn.close_connection();
 }
@@ -101,4 +111,3 @@ fn handle_input() -> bool{
         return true;    
     }
 }
-
